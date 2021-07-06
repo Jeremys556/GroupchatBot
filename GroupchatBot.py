@@ -5,7 +5,7 @@ import asyncio
 import os
 import json
 import multiprocessing as mp
-os.chdir(os.getcwd())
+os.chdir("..")
 
 with open("botdata.json", "r") as f:
     data = json.load(f)
