@@ -75,7 +75,7 @@ async def on_message(message):
                 if "https://" in messageContent or "http://" in messageContent:
                     messageContent = messageContent.replace("https://", "")
                     messageContent = messageContent.replace("http://", "")
-                sentMessage = message.author.name + "#" + message.author.discriminator + " > " + messageContent[1:]
+                sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent[1:]}"
                 print(sentMessage)
                 await sendMessage(sentMessage)
                 await message.delete()
@@ -92,5 +92,5 @@ async def on_guild_join(guild):
 #run client server
 with open('token.txt') as tokentxt:
     token = tokentxt.read()
-client.run(f'{token}')
+client.run(token)
 tokentxt.close()
