@@ -24,7 +24,7 @@ async def register_server(guild, defaultChannelId):
         json.dump(data,f,indent=2)
     return True
 
-async def sendMessage(message):
+async def send_message(message):
     #send message to all clients here
     for serverId in data:
         try:
@@ -77,7 +77,7 @@ async def on_message(message):
                     messageContent = messageContent.replace("http://", "")
                 sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent[1:]}"
                 print(sentMessage)
-                await sendMessage(sentMessage)
+                await send_message(sentMessage)
                 await message.delete()
     await client.process_commands(message) #makes normal commands work when typed
 
