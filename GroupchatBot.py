@@ -1,14 +1,22 @@
 #imports
 import discord
 from discord.ext import commands
+from discord.ext import tasks
 import asyncio
 import os
 import json
-import multiprocessing as mp
-os.chdir("..")
+from contextlib import suppress
 
+os.chdir("..")
 with open("botdata.json", "r") as f:
     data = json.load(f)
+with open("muteData.json", "r") as f:
+    muteData = json.load(f)
+with open('slurList.txt') as slurListFile:
+    slurList = slurListFile.readlines()
+    slurList = [x.strip() for x in slurList] #removes whitespace between words
+    slurList.append(' coon') #add this separately due to the above code removing whitespace, and incase people want to use the word "raccoon", it would count as a slur if there wasn't a space before the word
+    slurListFile.close()
 
 client = commands.Bot(command_prefix="!gc ")
 client.remove_command("help")
@@ -24,16 +32,47 @@ async def register_server(guild, defaultChannelId):
         json.dump(data,f,indent=2)
     return True
 
+#Function to send message to every server which has the bot
 async def send_message(message):
-    #send message to all clients here
     for serverId in data:
         try:
             channelId = data[str(serverId)]["messageChannelId"]
             channelObject = client.get_channel(channelId)
             await channelObject.send(message)
         except:
-            print("Cannot send message to server")
+            #Error happens if bot is kicked from server (may be other cases but this is only known case)
+            print(f"Cannot send message to server with server id {serverId}")
 
+#Function to mute users from using the bot
+async def mute_user(userObject, time): #time in minutes
+    username = userObject.name
+    userfull = f"{username}#{userObject.discriminator}"
+    muteData[userfull] = {}
+    muteData[userfull]["userId"] = userObject.id
+    muteData[userfull]["time"] = time
+    with open("muteData.json", "w") as f:
+        json.dump(muteData,f,indent=2)
+    await send_message(f"Server > {userfull} has been automatically muted by the server for {time} minutes.")
+
+#Ticks down the time on mutes by 1 minute every minute
+@tasks.loop(seconds=60)
+async def timeTicker():
+    with open("muteData.json", "r") as f:
+        muteData = json.load(f)
+    for username in muteData:
+        if muteData[username]["time"] == 0:
+            print(f"{username} has been unmuted. User id: {muteData[username]['userId']}")
+            userObject = client.get_user(muteData[username]['userId'])
+            dmChannel = await userObject.create_dm()
+            await dmChannel.send("Your mute from the groupchat bot has expired! Welcome back. Remember to follow the rules.")
+            muteData.pop(username)
+        else:
+            muteData[username]["time"] -= 1
+    with open("muteData.json", "w") as f:
+        json.dump(muteData,f,indent=2)
+
+
+#Discord bot command to open the help message
 @client.command(name='help')
 async def help(ctx):
     em = discord.Embed(title = ("Groupchat Bot's Commands"),description = "Command prefix is `!gc`", color = discord.Color.gold())
@@ -44,12 +83,12 @@ async def help(ctx):
     em.set_footer(text="Bot made by Jeremys556#9215")
     await ctx.send(embed=em)
 
+#Discord bot command to set the messages the bot sends to a different channel
 @client.command(name='setchannel')
 @commands.has_permissions(manage_channels=True)  
 async def setchannel(ctx, arg):
     guild = ctx.message.guild
     channelId = arg[2:-1]
-    print(f"New channel id attempt: {channelId}")
     if client.get_channel(int(channelId)) != None:
         data[str(guild.id)]["messageChannelId"] = int(channelId)
         with open("botdata.json", "w") as f:
@@ -58,29 +97,48 @@ async def setchannel(ctx, arg):
     else:
         await ctx.send(f"Not a valid channel: {arg}")
 
+#Discord on ready event, runs when bot is turned online
 @client.event
 async def on_ready():
     #when the bot powers on
     print("Bot online")
     await client.change_presence(status=discord.Status.online, activity=discord.Game('Type !gc help'))
+    timeTicker.start()
 
+#Discord on message event, runs when a message is sent in a server where the bot exists
 @client.event
 async def on_message(message):
-    if message.content[0] == "$":
-        guild_id = message.guild.id
-        channel_id = message.channel.id
-        messageContent = message.content
-        if data[str(guild_id)]["messageChannelId"] == channel_id:
-            if "@everyone" not in messageContent and "@here" not in messageContent:
-                if "https://" in messageContent or "http://" in messageContent:
-                    messageContent = messageContent.replace("https://", "")
-                    messageContent = messageContent.replace("http://", "")
-                sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent[1:]}"
-                print(sentMessage)
-                await send_message(sentMessage)
-                await message.delete()
+    with suppress(IndexError): #When messages such as embedded messages from other bots are sent, it technically is considered to have no characters, meaning it returns a meaningless index error. This is just here to suppress it to keep console cleaner. 
+        if message.content[0] == "$":
+            guild_id = message.guild.id
+            channel_id = message.channel.id
+            messageContent = message.content[1:]
+            sentMessageChannel = client.get_channel(channel_id)
+            if data[str(guild_id)]["messageChannelId"] == channel_id:
+                for username in muteData:
+                    if muteData[username]["userId"] == message.author.id:
+                        dmChannel = await message.author.create_dm()
+                        await dmChannel.send(f"You are currently muted from using the Groupchat bot. Your mute expires in {muteData[username]['time']} minutes.")
+                        return #exits function by returning nothing
+                if "@everyone" not in messageContent and "@here" not in messageContent:
+                    #Check for slurs
+                    if any(word in messageContent for word in slurList):
+                        await mute_user(message.author, 180)
+                    else:
+                        if "https://" in messageContent or "http://" in messageContent:
+                            messageContent = messageContent.replace("https://", "")
+                            messageContent = messageContent.replace("http://", "")
+                        sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent}"
+                        print(sentMessage)
+                        await send_message(sentMessage)
+                        await message.delete()
+                #if @everyone or @here in message:
+                else:
+                    sentMessageChannel.send(f"You cannot use everyone or here pings in Groupchat, {message.author.name}#{message.author.discriminator}!")
+
     await client.process_commands(message) #makes normal commands work when typed
 
+#Discord on guild join event, runs when the bot joins a new server
 @client.event
 async def on_guild_join(guild):
     for channel in guild.text_channels:
@@ -89,8 +147,8 @@ async def on_guild_join(guild):
             await register_server(guild, channel.id)
         break
 
-#run client server
+#Grabs the token and starts the bot
 with open('token.txt') as tokentxt:
     token = tokentxt.read()
-client.run(token)
 tokentxt.close()
+client.run(token)
