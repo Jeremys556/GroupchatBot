@@ -18,6 +18,7 @@ with open('slurList.txt') as slurListFile:
     slurList.append(' coon') #add this separately due to the above code removing whitespace, and incase people want to use the word "raccoon", it would count as a slur if there wasn't a space before the word
     slurListFile.close()
 
+mod_ids = [240963309266927616, 481472501621456916]
 unsendableServers = []
 intents = discord.Intents.default()
 intents.members = True
@@ -31,6 +32,7 @@ async def register_server(guild, defaultChannelId):
         data[str(guild.id)] = {}
         data[str(guild.id)]["messageChannelId"] = defaultChannelId
         data[str(guild.id)]["serverName"] = guild.name
+        data[str(guild.id)]["prefix"] = "$"
     with open("botdata.json", "w") as f:
         json.dump(data,f,indent=2)
     return True
@@ -89,10 +91,17 @@ async def timeTicker():
 async def help(ctx):
     em = discord.Embed(title = ("Groupchat Bot's Commands"),description = "Command prefix is `!gc`", color = discord.Color.gold())
     em.add_field(name="Bot Explanation", value = "When you send a message to group chat, it will send the same message to every server that has the bot in it, like a group chat where you can talk to people across different servers!", inline = False)
-    em.add_field(name="Bot Usage", value = "To send a message to group chat, in your group chat channel, put $ before your message", inline = False)
-    em.add_field(name="!gc setchannel", value = "Sets the channel where groupchat messages will come through, and can be sent through.", inline = False)
+    guild = ctx.guild
+    channelName = f"<#{data[str(guild.id)]['messageChannelId']}>"
+    if data[str(guild.id)]['prefix'] != "none":
+        serverPrefix = data[str(guild.id)]['prefix']
+        em.add_field(name="Bot Usage", value = f"To send a message to group chat, send a message in {channelName} with {serverPrefix} before your message.", inline = False)
+    else:
+        em.add_field(name="Bot Usage", value = f"To send a message to group chat, send a message in {channelName}.", inline = False)
+    em.add_field(name="!gc setchannel (channel ping)", value = "Sets the channel where groupchat messages will come through, and can be sent through.", inline = False)
     em.add_field(name="!gc stats", value = "Shows statistics about the bot.", inline = False)
-    em.add_field(name="!gc help", value = "Bring up this help dialog", inline = False)
+    em.add_field(name="!gc setprefix (prefix)", value = "Use 'none' to have no prefix. Sets the prefix for **sending messages to GroupChat** only. Does not change !gc.", inline = False)
+    em.add_field(name="!gc help", value = "Bring up this help dialog.", inline = False)
     em.set_footer(text="Bot made by Jeremys556#9215\nOfficial discord: https://discord.gg/npNkr2gNgr")
     await ctx.send(embed=em)
 
@@ -103,6 +112,29 @@ async def info(ctx):
     em = discord.Embed(title = ("Groupchat Bot Statistics"), color = discord.Color.gold())
     em.add_field(name="Servers", value=f"I am in {serverCount} servers")
     await ctx.send(embed=em)
+
+@client.command(name='setprefix')
+@commands.has_permissions(manage_channels=True)
+async def setprefix(ctx, arg):
+    if arg != "":
+        guild = ctx.message.guild
+        triedPrefix = str(arg).lower()
+        if arg == "none":
+            data[str(guild.id)]["prefix"] = "none"
+            with open("botdata.json", "w") as f:
+                json.dump(data,f,indent=2)
+            await ctx.send("Prefix set to none")
+        else:
+            if len(triedPrefix) == 1:
+                data[str(guild.id)]["prefix"] = triedPrefix
+                with open("botdata.json", "w") as f:
+                    json.dump(data,f,indent=2)
+                await ctx.send(f"Prefix set to {triedPrefix}")
+            else:
+                await ctx.send("Prefix must be only 1 character")
+    else:
+        await ctx.send("You need to add an argument to this command. Use 'none'. Proper usage: `!gc setprefix`")
+    
 
 #Discord bot command to set the messages the bot sends to a different channel
 @client.command(name='setchannel')
@@ -120,7 +152,7 @@ async def setchannel(ctx, arg):
 
 @client.command(name='mute')
 async def mute(ctx, arg1, arg2): #arg1 is full username, arg2 is time
-    if ctx.author.id == 240963309266927616: #my id
+    if ctx.author.id in mod_ids: #my id
         if "#" in arg1:
             if arg2.isdigit():
                 splitUser = arg1.split("#")
@@ -148,33 +180,62 @@ async def on_ready():
 @client.event
 async def on_message(message):
     with suppress(IndexError): #When messages such as embedded messages from other bots are sent, it technically is considered to have no characters, meaning it returns a meaningless index error. This is just here to suppress it to keep console cleaner. 
-        if message.content[0] == "$":
+        if message.author.bot != True:
             guild_id = message.guild.id
             channel_id = message.channel.id
-            messageContent = message.content[1:]
-            sentMessageChannel = client.get_channel(channel_id)
-            if data[str(guild_id)]["messageChannelId"] == channel_id:
-                for username in muteData:
-                    if muteData[username]["userId"] == message.author.id:
-                        dmChannel = await message.author.create_dm()
-                        await dmChannel.send(f"You are currently muted from using the Groupchat bot. Your mute expires in {muteData[username]['time']} minutes.")
-                        return #exits function by returning nothing
-                if "@everyone" not in messageContent and "@here" not in messageContent:
-                    #Check for slurs
-                    if any(word in messageContent for word in slurList):
-                        await mute_user(message.author, 180)
-                        await send_message(f"Server > {message.author} has been automatically muted by the server for 180 minutes.")
+            prefix = data[str(guild_id)]["prefix"]
+            if prefix != "none":
+                if message.content[0].lower() == prefix.lower():
+                    messageContent = message.content[1:]
+                    sentMessageChannel = client.get_channel(channel_id)
+                    if data[str(guild_id)]["messageChannelId"] == channel_id:
+                        for username in muteData:
+                            if muteData[username]["userId"] == message.author.id:
+                                dmChannel = await message.author.create_dm()
+                                await dmChannel.send(f"You are currently muted from using the Groupchat bot. Your mute expires in {muteData[username]['time']} minutes.")
+                                return #exits function by returning nothing
+                        if "@everyone" not in messageContent and "@here" not in messageContent:
+                            #Check for slurs
+                            if any(word in messageContent for word in slurList):
+                                await mute_user(message.author, 180)
+                                await send_message(f"Server > {message.author} has been automatically muted by the server for 180 minutes.")
+                            else:
+                                await message.delete()
+                                if "https://" in messageContent or "http://" in messageContent:
+                                    messageContent = messageContent.replace("https://", "")
+                                    messageContent = messageContent.replace("http://", "")
+                                sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent}"
+                                print(sentMessage)
+                                await send_message(sentMessage)
+                        #if @everyone or @here in message:
+                        else:
+                            sentMessageChannel.send(f"You cannot use everyone or here pings in Groupchat, {message.author.name}#{message.author.discriminator}!")
+            else:
+                #repeat of above code, except not needing prefix. i feel there should be a better way but idk what it is, and functions would (supposedly) slow it down
+                messageContent = message.content
+                sentMessageChannel = client.get_channel(channel_id)
+                if data[str(guild_id)]["messageChannelId"] == channel_id:
+                    for username in muteData:
+                        if muteData[username]["userId"] == message.author.id:
+                            dmChannel = await message.author.create_dm()
+                            await dmChannel.send(f"You are currently muted from using the Groupchat bot. Your mute expires in {muteData[username]['time']} minutes.")
+                            return #exits function by returning nothing
+                    if "@everyone" not in messageContent and "@here" not in messageContent:
+                        #Check for slurs
+                        if any(word in messageContent for word in slurList):
+                            await mute_user(message.author, 180)
+                            await send_message(f"Server > {message.author} has been automatically muted by the server for 180 minutes.")
+                        else:
+                            if "https://" in messageContent or "http://" in messageContent:
+                                messageContent = messageContent.replace("https://", "")
+                                messageContent = messageContent.replace("http://", "")
+                            sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent}"
+                            print(sentMessage)
+                            await send_message(sentMessage)
+                            await message.delete()
+                    #if @everyone or @here in message:
                     else:
-                        if "https://" in messageContent or "http://" in messageContent:
-                            messageContent = messageContent.replace("https://", "")
-                            messageContent = messageContent.replace("http://", "")
-                        sentMessage = f"{message.author.name}#{message.author.discriminator} > {messageContent}"
-                        print(sentMessage)
-                        await send_message(sentMessage)
-                        await message.delete()
-                #if @everyone or @here in message:
-                else:
-                    sentMessageChannel.send(f"You cannot use everyone or here pings in Groupchat, {message.author.name}#{message.author.discriminator}!")
+                        sentMessageChannel.send(f"You cannot use everyone or here pings in Groupchat, {message.author.name}#{message.author.discriminator}!")
 
     await client.process_commands(message) #makes normal commands work when typed
 
