@@ -18,6 +18,7 @@ with open('slurList.txt') as slurListFile:
     slurList.append(' coon') #add this separately due to the above code removing whitespace, and incase people want to use the word "raccoon", it would count as a slur if there wasn't a space before the word
     slurListFile.close()
 
+unsendableServers = []
 intents = discord.Intents.default()
 intents.members = True
 client = commands.Bot(command_prefix="!gc ", intents=intents)
@@ -34,6 +35,14 @@ async def register_server(guild, defaultChannelId):
         json.dump(data,f,indent=2)
     return True
 
+async def remove_unsendable_servers():
+    with suppress(RuntimeError): #Suppresses dictionary changed size during iteration error, as this can cause the error to happen sometimes as it calls while iterating in send_message()
+        for serverId in unsendableServers:
+            data.pop(str(serverId))
+            with open("botdata.json", "w") as f:
+                json.dump(data,f,indent=2)
+            print(f"Removed server id {serverId} from botdata.json")
+
 #Function to send message to every server which has the bot
 async def send_message(message):
     for serverId in data:
@@ -44,6 +53,8 @@ async def send_message(message):
         except:
             #Error happens if bot is kicked from server (may be other cases but this is only known case)
             print(f"Cannot send message to server with server id {serverId}")
+            unsendableServers.append(serverId)
+            await remove_unsendable_servers()       
 
 #Function to mute users from using the bot
 async def mute_user(userObject, time): #time in minutes
@@ -72,7 +83,6 @@ async def timeTicker():
             muteData[username]["time"] -= 1
     with open("muteData.json", "w") as f:
         json.dump(muteData,f,indent=2)
-
 
 #Discord bot command to open the help message
 @client.command(name='help')
