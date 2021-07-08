@@ -245,8 +245,8 @@ async def on_guild_join(guild):
     for channel in guild.text_channels:
         if channel.permissions_for(guild.me).send_messages:
             await channel.send('Hello! This is my default channel. If you would like to change the channel, please type `!gc setchannel (channel)`. Type `!gc help` for all commands!')
-            await register_server(guild, channel.id)
         break
+    await register_server(guild, channel.id)
 
 #Grabs the token and starts the bot
 with open('token.txt') as tokentxt:
