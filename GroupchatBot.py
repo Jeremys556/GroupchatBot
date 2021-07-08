@@ -91,8 +91,17 @@ async def help(ctx):
     em.add_field(name="Bot Explanation", value = "When you send a message to group chat, it will send the same message to every server that has the bot in it, like a group chat where you can talk to people across different servers!", inline = False)
     em.add_field(name="Bot Usage", value = "To send a message to group chat, in your group chat channel, put $ before your message", inline = False)
     em.add_field(name="!gc setchannel", value = "Sets the channel where groupchat messages will come through, and can be sent through.", inline = False)
+    em.add_field(name="!gc stats", value = "Shows statistics about the bot.", inline = False)
     em.add_field(name="!gc help", value = "Bring up this help dialog", inline = False)
-    em.set_footer(text="Bot made by Jeremys556#9215")
+    em.set_footer(text="Bot made by Jeremys556#9215\nOfficial discord: https://discord.gg/npNkr2gNgr")
+    await ctx.send(embed=em)
+
+#Discord bot command to show bot statistics
+@client.command(name='stats')
+async def info(ctx):
+    serverCount = len(data)
+    em = discord.Embed(title = ("Groupchat Bot Statistics"), color = discord.Color.gold())
+    em.add_field(name="Servers", value=f"I am in {serverCount} servers")
     await ctx.send(embed=em)
 
 #Discord bot command to set the messages the bot sends to a different channel
