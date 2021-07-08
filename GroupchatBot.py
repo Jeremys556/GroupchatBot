@@ -18,7 +18,9 @@ with open('slurList.txt') as slurListFile:
     slurList.append(' coon') #add this separately due to the above code removing whitespace, and incase people want to use the word "raccoon", it would count as a slur if there wasn't a space before the word
     slurListFile.close()
 
-client = commands.Bot(command_prefix="!gc ")
+intents = discord.Intents.default()
+intents.members = True
+client = commands.Bot(command_prefix="!gc ", intents=intents)
 client.remove_command("help")
 
 async def register_server(guild, defaultChannelId):
@@ -49,10 +51,9 @@ async def mute_user(userObject, time): #time in minutes
     userfull = f"{username}#{userObject.discriminator}"
     muteData[userfull] = {}
     muteData[userfull]["userId"] = userObject.id
-    muteData[userfull]["time"] = time
+    muteData[userfull]["time"] = int(time)
     with open("muteData.json", "w") as f:
         json.dump(muteData,f,indent=2)
-    await send_message(f"Server > {userfull} has been automatically muted by the server for {time} minutes.")
 
 #Ticks down the time on mutes by 1 minute every minute
 @tasks.loop(seconds=60)
@@ -66,6 +67,7 @@ async def timeTicker():
             dmChannel = await userObject.create_dm()
             await dmChannel.send("Your mute from the groupchat bot has expired! Welcome back. Remember to follow the rules.")
             muteData.pop(username)
+            break
         else:
             muteData[username]["time"] -= 1
     with open("muteData.json", "w") as f:
@@ -97,6 +99,24 @@ async def setchannel(ctx, arg):
     else:
         await ctx.send(f"Not a valid channel: {arg}")
 
+@client.command(name='mute')
+async def mute(ctx, arg1, arg2): #arg1 is full username, arg2 is time
+    if ctx.author.id == 240963309266927616: #my id
+        if "#" in arg1:
+            if arg2.isdigit():
+                splitUser = arg1.split("#")
+                nameArgument = splitUser[0]
+                discriminatorArgument = splitUser[1]
+                user = discord.utils.get(client.get_all_members(), name=nameArgument, discriminator=discriminatorArgument)
+                await mute_user(user, arg2)
+                await send_message(f"Server > {arg1} has been muted by {ctx.author} for {arg2} minutes.")
+            else:
+                await ctx.send(f"Time argument (Second argument) must be an integer. You put: {arg2}")
+        else:
+            await ctx.send("Make sure to put their full username, including the # before their discriminator")
+    else:
+        await ctx.send("You must be a GroupChat moderator to use this command.")
+
 #Discord on ready event, runs when bot is turned online
 @client.event
 async def on_ready():
@@ -124,6 +144,7 @@ async def on_message(message):
                     #Check for slurs
                     if any(word in messageContent for word in slurList):
                         await mute_user(message.author, 180)
+                        await send_message(f"Server > {message.author} has been automatically muted by the server for 180 minutes.")
                     else:
                         if "https://" in messageContent or "http://" in messageContent:
                             messageContent = messageContent.replace("https://", "")
